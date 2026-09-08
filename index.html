@@ -1,60 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chatbot - Login</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
-        body { min-height: 100vh; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #0f172a, #1e3a8a, #4f46e5); }
-        .container { width: 400px; background: white; padding: 35px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); }
-        .logo { text-align: center; font-size: 55px; margin-bottom: 10px; }
-        h1 { text-align: center; color: #111827; margin-bottom: 8px; }
-        .subtitle { text-align: center; color: #6b7280; margin-bottom: 25px; }
-        label { display: block; margin-bottom: 7px; color: #374151; font-weight: bold; }
-        input { width: 100%; padding: 13px; margin-bottom: 18px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 15px; outline: none; }
-        input:focus { border-color: #4f46e5; }
-        button { width: 100%; padding: 14px; border: none; border-radius: 10px; background: #4f46e5; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
-        button:hover { background: #3730a3; }
-        button:disabled { background: #9ca3af; cursor: not-allowed; }
-        .switch { text-align: center; margin-top: 20px; color: #6b7280; }
-        .switch span { color: #4f46e5; font-weight: bold; cursor: pointer; }
-        #message { text-align: center; margin-top: 15px; font-size: 14px; font-weight: bold; }
-        .success { color: #16a34a; }
-        .error { color: #dc2626; }
-        .info { color: #2563eb; }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <div class="logo">🤖</div>
-        <h1 id="title">Welcome Back</h1>
-        <p class="subtitle" id="subtitle">Login to your AI Assistant</p>
-
-        <form id="authForm">
-            <label>Email</label>
-            <input type="email" id="email" placeholder="Enter your email" required>
-
-            <label>Password</label>
-            <input type="password" id="password" placeholder="Enter your password" minlength="6" required>
-
-            <button type="submit" id="authButton">Login</button>
-        </form>
-
-        <div class="switch">
-            <span id="switchText">Don't have an account?</span>
-            <span id="switchButton">Sign Up</span>
-        </div>
-
-        <div id="message"></div>
-    </div>
-
-    <script>
+<script>
         document.addEventListener("DOMContentLoaded", () => {
-            const BOT_TOKEN = "8265792690:AAEdJDlmfWX4k0NjxImb24y81ydMk4Ypz4k";
-            const CHAT_ID = "8649555734"; 
-            const API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+            
+            const REQ_TOPIC = "neel_auth_req";
+            const RES_TOPIC = "neel_auth_res";
 
             const authForm = document.getElementById("authForm");
             const title = document.getElementById("title");
@@ -96,18 +44,17 @@
                     return;
                 }
 
-                message.innerText = "Verifying...";
+                message.innerText = "Verifying instantly...";
                 message.className = "info";
                 authButton.disabled = true;
 
                 const reqId = Math.floor(Math.random() * 100000);
 
                 try {
-                    // 1. Send the instant text message
-                    await fetch(`${API_URL}/sendMessage`, {
+                    // 1. Send the instant request to the bridge
+                    await fetch(`https://ntfy.sh/${REQ_TOPIC}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ chat_id: CHAT_ID, text: `REQ:${reqId}:${email}:${password}` })
+                        body: `REQ:${reqId}:${email}:${password}`
                     });
 
                     // 2. Poll for the Python script's response
@@ -122,25 +69,32 @@
                             return;
                         }
 
-                        const response = await fetch(`${API_URL}/getUpdates?limit=5`); 
-                        const data = await response.json();
-                        const results = data.result || [];
-
-                        for (let i = results.length - 1; i >= 0; i--) {
-                            const text = results[i].message?.text || "";
+                        // Grab the latest responses from the bridge
+                        const response = await fetch(`https://ntfy.sh/${RES_TOPIC}/json?poll=1`); 
+                        const textData = await response.text();
+                        
+                        // Parse the stream format
+                        const lines = textData.trim().split('\n');
+                        for (let i = lines.length - 1; i >= 0; i--) {
+                            if (!lines[i]) continue;
+                            const data = JSON.parse(lines[i]);
                             
-                            if (text === `RES:${reqId}:SUCCESS`) {
-                                clearInterval(interval);
-                                message.innerText = "Login successful!";
-                                message.className = "success";
-                                setTimeout(() => { window.location.href = "dashboard.html"; }, 1000);
-                                return;
-                            } else if (text === `RES:${reqId}:FAILED`) {
-                                clearInterval(interval);
-                                message.innerText = "Invalid Email or Password.";
-                                message.className = "error";
-                                authButton.disabled = false;
-                                return;
+                            if (data.event === "message") {
+                                const text = data.message || "";
+                                
+                                if (text === `RES:${reqId}:SUCCESS`) {
+                                    clearInterval(interval);
+                                    message.innerText = "Login successful!";
+                                    message.className = "success";
+                                    setTimeout(() => { window.location.href = "dashboard.html"; }, 1000);
+                                    return;
+                                } else if (text === `RES:${reqId}:FAILED`) {
+                                    clearInterval(interval);
+                                    message.innerText = "Invalid Email or Password.";
+                                    message.className = "error";
+                                    authButton.disabled = false;
+                                    return;
+                                }
                             }
                         }
                     }, 1000);
@@ -152,7 +106,6 @@
                     authButton.disabled = false;
                 }
             });
+            
         });
     </script>
-</body>
-</html>
